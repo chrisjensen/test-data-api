@@ -7,10 +7,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "vitest",
+    "test": "vitest run",
     "test:watch": "vitest --watch",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "generate-report": "node scripts/generate-diversity-report.js"
   },
   "keywords": ["test", "data", "factory", "mock", "deterministic"],
   "author": "",

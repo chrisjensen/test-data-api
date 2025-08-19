@@ -14,7 +14,9 @@ export class DataFactory {
                 picture: 25,
                 reference: 10,
                 address: 15,
-                quote: 20
+                quote: 20,
+                dateOfBirth: 10,
+                pronouns: 10
             },
             group: {
                 email: 30,
