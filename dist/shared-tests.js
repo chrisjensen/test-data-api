@@ -94,6 +94,17 @@ export function validateDataPackage(dataPackage, options = {}) {
                 expect(person.email, `${personId}: missing email`).toBeDefined();
                 expect(person.email, `${personId}: email must be string`).toEqual(expect.any(String));
                 expect(person.email, `${personId}: invalid email format`).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+                // Test data should use .test domains for safety
+                expect(person.email, `${personId}: should use .test domain for mock data safety`).toMatch(/\.test$/);
+            });
+        });
+        it('should have valid reference URLs when present', () => {
+            people.forEach((person, index) => {
+                const personId = person.fullName || person.preferredName || `Person ${index}`;
+                const personWithRef = person;
+                if (personWithRef.reference) {
+                    expect(personWithRef.reference, `${personId}: reference must be valid HTTPS URL`).toMatch(/^https:\/\/.+/);
+                }
             });
         });
         it('should have valid tags', () => {
@@ -117,14 +128,6 @@ export function validateDataPackage(dataPackage, options = {}) {
                 });
             });
         });
-        if (defaultOptions.containsFirstNationsPeople) {
-            it('should have First Nations people when metadata indicates', () => {
-                const hasFirstNationsPeople = people.some(person => person.isFirstNations === true);
-                if (!hasFirstNationsPeople) {
-                    console.warn('⚠️  metadata.containsFirstNationsPeople is true but no people have isFirstNations flag');
-                }
-            });
-        }
     });
     describe(`${defaultOptions.datasetName} - Groups Validation`, () => {
         const groups = dataPackage.groups;
@@ -146,6 +149,14 @@ export function validateDataPackage(dataPackage, options = {}) {
                 expect(group.about, `Group ${group.id}: missing about`).toBeDefined();
                 expect(group.about, `Group ${group.id}: about must be string`).toEqual(expect.any(String));
                 expect(group.about.length, `Group ${group.id}: about too short`).toBeGreaterThan(10);
+            });
+        });
+        it('should have valid group contact information', () => {
+            groups.forEach((group, index) => {
+                // Group emails should also use .test domains when present
+                if (group.email) {
+                    expect(group.email, `Group ${group.id}: should use .test domain for mock data safety`).toMatch(/\.test$/);
+                }
             });
         });
     });
@@ -179,6 +190,36 @@ export function validateDataPackage(dataPackage, options = {}) {
                 });
             });
         });
+    });
+    // Add DataFactory integration tests
+    describe(`${defaultOptions.datasetName} - DataFactory Integration`, () => {
+        it('should work with DataFactory when properly acknowledged', () => {
+            const testFactory = new DataFactory(dataPackage, {
+                acknowledgeDeceasedFirstNations: defaultOptions.acknowledgeDeceasedFirstNations
+            });
+            const people = testFactory.getPeople();
+            const groups = testFactory.getGroups();
+            const events = testFactory.getEvents();
+            expect(Array.isArray(people)).toBe(true);
+            expect(Array.isArray(groups)).toBe(true);
+            expect(Array.isArray(events)).toBe(true);
+            expect(people.length).toBeGreaterThan(0);
+        });
+        it('should support filtering by count', () => {
+            const testFactory = new DataFactory(dataPackage, {
+                acknowledgeDeceasedFirstNations: defaultOptions.acknowledgeDeceasedFirstNations
+            });
+            const allPeople = testFactory.getPeople();
+            const somePeople = testFactory.getPeople(5);
+            expect(somePeople.length).toBeLessThanOrEqual(5);
+            expect(somePeople.length).toBeLessThanOrEqual(allPeople.length);
+        });
+        if (defaultOptions.containsFirstNationsPeople) {
+            it('should require acknowledgment for First Nations data', () => {
+                const factoryWithoutAck = new DataFactory(dataPackage, { acknowledgeDeceasedFirstNations: false });
+                expect(() => factoryWithoutAck.getPeople()).toThrow(/requires acknowledgment/);
+            });
+        }
     });
     // Run custom validations as separate tests
     if (defaultOptions.customValidations.length > 0) {
