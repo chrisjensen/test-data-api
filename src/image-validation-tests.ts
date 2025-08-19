@@ -91,13 +91,5 @@ export async function validateImageUrls(dataPackage: DataPackage, options: Image
         await validateImageUrl(group.picture!, `Group ${group.id} (${group.picture})`);
       }
     }, defaultOptions.httpTimeout + 5000); // Add buffer time for test execution
-
-    it('should handle missing images gracefully', () => {
-      const peopleWithoutImages = people.filter(person => !person.picture);
-      const groupsWithoutImages = groups.filter(group => !group.picture);
-      
-      // This test ensures that missing images don't cause validation failures
-      expect(peopleWithoutImages.length + groupsWithoutImages.length).toBeGreaterThanOrEqual(0);
-    });
   });
 }

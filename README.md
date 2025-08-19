@@ -64,6 +64,34 @@ const users2 = factory.getPeople(5);
 - `getEvents(count?)` - Get events (all if no count, random selection if count provided)
 - `getEvent(id)` - Get event by ID
 
+## Image Validation
+
+For datasets with image URLs, you can run separate image validation tests to ensure:
+
+- Images return 200 status codes
+- Content-Type headers indicate image files
+- Response bodies don't contain HTML (prevents redirects to error pages)
+
+```typescript
+import { validateImageUrls } from 'test-data-factory';
+
+// Run image validation separately (slower, uses bandwidth)
+validateImageUrls(yourDataPackage, {
+  datasetName: 'Your Dataset',
+  httpTimeout: 15000, // 15 second timeout
+  skipImageValidation: false
+});
+
+// Skip image validation (useful for CI/CD)
+validateImageUrls(yourDataPackage, { skipImageValidation: true });
+```
+
+**Note:** Image validation is separate from the main validation suite because it:
+- Makes HTTP requests (slower)
+- Consumes bandwidth
+- May timeout on slow connections
+- Should be run selectively in development/testing
+
 ## Data Package Format
 
 Your data package should export an object with:
