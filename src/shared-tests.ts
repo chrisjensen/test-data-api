@@ -162,6 +162,15 @@ export function validateDataPackage(dataPackage: DataPackage, options: TestOptio
       });
     });
 
+    it('should have valid picture URLs', () => {
+      people.forEach((person, index) => {
+        const personId = person.fullName || person.preferredName || `Person ${index}`;
+        expect(person.picture, `${personId}: missing picture URL`).toBeDefined();
+        expect(person.picture, `${personId}: picture must be string`).toEqual(expect.any(String));
+        expect(person.picture, `${personId}: picture must be valid HTTPS URL`).toMatch(/^https:\/\/.+/);
+      });
+    });
+
     it('should have valid group memberships', () => {
       const groupIds = new Set(dataPackage.groups.map(g => g.id));
       
@@ -287,6 +296,40 @@ export function validateDataPackage(dataPackage: DataPackage, options: TestOptio
     }
   });
 
+  // HTTP validation tests - only run when explicitly enabled
+  if (defaultOptions.validateImageUrls) {
+    describe(`${defaultOptions.datasetName} - HTTP Image Validation`, () => {
+      it('should have accessible picture URLs', async () => {
+        const people = dataPackage.people;
+        const results = await Promise.allSettled(
+          people.map(async (person) => {
+            const personId = person.fullName || person.preferredName || person.id;
+            try {
+              const response = await fetch(person.picture, { 
+                method: 'HEAD',
+                timeout: defaultOptions.httpTimeout 
+              });
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+              return { personId, success: true };
+            } catch (error) {
+              throw new Error(`${personId}: ${error.message}`);
+            }
+          })
+        );
+
+        const failures = results
+          .filter(result => result.status === 'rejected')
+          .map(result => (result as PromiseRejectedResult).reason.message);
+
+        if (failures.length > 0) {
+          throw new Error(`Image URL validation failed:\n${failures.join('\n')}`);
+        }
+      }, 30000); // 30 second timeout for HTTP tests
+    });
+  }
+
   // Run custom validations as separate tests
   if (defaultOptions.customValidations.length > 0) {
     describe(`${defaultOptions.datasetName} - Custom Validations`, () => {
@@ -300,4 +343,43 @@ export function validateDataPackage(dataPackage: DataPackage, options: TestOptio
       });
     });
   }
+}
+
+// Separate HTTP image validation function that can be used independently
+export function validateImageUrls(dataPackage: DataPackage, options: { datasetName?: string; httpTimeout?: number } = {}) {
+  const defaultOptions = {
+    datasetName: options.datasetName || 'Dataset',
+    httpTimeout: options.httpTimeout || 15000
+  };
+
+  describe(`${defaultOptions.datasetName} - HTTP Image Validation`, () => {
+    it('should have accessible picture URLs', async () => {
+      const people = dataPackage.people;
+      const results = await Promise.allSettled(
+        people.map(async (person) => {
+          const personId = person.fullName || person.preferredName || person.id;
+          try {
+            const response = await fetch(person.picture, { 
+              method: 'HEAD',
+              timeout: defaultOptions.httpTimeout 
+            });
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return { personId, success: true };
+          } catch (error) {
+            throw new Error(`${personId}: ${error.message}`);
+          }
+        })
+      );
+
+      const failures = results
+        .filter(result => result.status === 'rejected')
+        .map(result => (result as PromiseRejectedResult).reason.message);
+
+      if (failures.length > 0) {
+        throw new Error(`Image URL validation failed:\n${failures.join('\n')}`);
+      }
+    }, 30000); // 30 second timeout for HTTP tests
+  });
 }
