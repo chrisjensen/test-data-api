@@ -11,18 +11,26 @@
     "test:watch": "vitest --watch",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "generate-report": "node scripts/generate-diversity-report.js"
+    "generate-report": "node scripts/generate-diversity-report.js",
+    "fact-check": "node scripts/fact-check-bios.js"
   },
-  "keywords": ["test", "data", "factory", "mock", "deterministic"],
+  "keywords": [
+    "test",
+    "data",
+    "factory",
+    "mock",
+    "deterministic"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0",
-    "eslint": "^8.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0"
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "node-fetch": "^3.3.2",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   },
   "files": [
     "dist"
