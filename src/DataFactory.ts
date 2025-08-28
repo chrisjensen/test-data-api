@@ -35,7 +35,7 @@ export class DataFactory {
   }
 
   loadData(dataPackage: DataPackage, options?: LoadDataOptions): void {
-    this.dataPackageMetadata = dataPackage.metadata;
+    this.dataPackageMetadata = dataPackage.metadata || undefined;
     this.firstNationsAcknowledged = options?.acknowledgeDeceasedFirstNations ?? false;
     
     // Check if this package contains First Nations people and validate acknowledgment
