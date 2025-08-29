@@ -4,14 +4,30 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
+import { config } from 'dotenv';
+import { InferenceClient } from '@huggingface/inference';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment variables
+config();
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const useLocal = args.includes('--local');
+const useHuggingface = args.includes('--huggingface');
+
 // Configuration
 const OLLAMA_BASE_URL = 'http://localhost:11434';
-const MODEL_NAME = 'bespoke-minicheck:7b';
+const OLLAMA_MODEL = 'bespoke-minicheck:7b';
+const HUGGINGFACE_MODEL = 'meta-llama/Llama-3.1-8B-Instruct'; // Working model for fact checking
 const OUTPUT_FILE = path.join(__dirname, 'fact-check-errors.csv');
+
+// Determine which API to use
+const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY || process.env.HUGGING_FACE_API_KEY;
+const USE_HUGGINGFACE = !useLocal && (useHuggingface || HUGGINGFACE_API_KEY);
+const API_PROVIDER = USE_HUGGINGFACE ? 'huggingface' : 'ollama';
 
 // CSV Headers
 const CSV_HEADERS = 'dataset,person_id,person_name,error_type,description,confidence,reference_url,bio_excerpt\n';
@@ -61,6 +77,44 @@ class FactChecker {
   }
 
   /**
+   * Query LLM for fact-checking (supports both Ollama and HuggingFace)
+   */
+  async queryLLM(prompt) {
+    if (USE_HUGGINGFACE) {
+      return await this.queryHuggingFace(prompt);
+    } else {
+      return await this.queryOllama(prompt);
+    }
+  }
+
+  /**
+   * Query HuggingFace API for fact-checking
+   */
+  async queryHuggingFace(prompt) {
+    try {
+      if (!HUGGINGFACE_API_KEY) {
+        throw new Error('HUGGINGFACE_API_KEY not found in environment variables');
+      }
+
+      const client = new InferenceClient(HUGGINGFACE_API_KEY);
+      
+      const result = await client.chatCompletion({
+        model: HUGGINGFACE_MODEL,
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 500,
+        temperature: 0.1
+      });
+
+      return result.choices[0].message.content;
+    } catch (error) {
+      console.log(`  ❌ HuggingFace query failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Query Ollama model for fact-checking
    */
   async queryOllama(prompt) {
@@ -71,7 +125,7 @@ class FactChecker {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: MODEL_NAME,
+          model: OLLAMA_MODEL,
           prompt: prompt,
           stream: false,
           options: {
@@ -94,16 +148,64 @@ class FactChecker {
   }
 
   /**
-   * Create fact-checking prompt
+   * Create fact-checking prompt (optimized for different APIs)
    */
   createFactCheckPrompt(bio, referenceContent, personName) {
+    if (USE_HUGGINGFACE) {
+      return this.createHuggingFacePrompt(bio, referenceContent, personName);
+    } else {
+      return this.createOllamaPrompt(bio, referenceContent, personName);
+    }
+  }
+
+  /**
+   * Create HuggingFace-optimized prompt (chat format)
+   */
+  createHuggingFacePrompt(bio, referenceContent, personName) {
+    return `You are a professional fact-checker. Your job is to identify factual errors in biographical text.
+
+TASK: Compare the biographical information below against the reference content and identify any factual errors, contradictions, or false claims.
+
+BIOGRAPHICAL TEXT:
+"${bio}"
+
+REFERENCE CONTENT:
+${referenceContent.substring(0, 6000)}
+
+PERSON: ${personName}
+
+CRITERIA FOR FLAGGING ERRORS:
+- Only flag CLEAR factual errors, contradictions, or false information
+- Focus on: birth/death dates, achievements, awards, affiliations, historical events, family relations
+- Do not flag information that is simply not mentioned in the reference
+- Be specific about what is wrong
+
+OUTPUT FORMAT:
+If you find factual errors, respond EXACTLY like this:
+ERROR_FOUND|[high/medium/low]|[specific description]|[relevant bio excerpt]
+
+If no factual errors are found, respond EXACTLY:
+NO_ERRORS_FOUND
+
+EXAMPLES:
+- ERROR_FOUND|high|Bio states birth year as 1955 but reference shows 1957|"born in 1955"  
+- ERROR_FOUND|medium|Bio claims Nobel Prize winner but reference shows no Nobel Prize|"won the Nobel Prize"
+- NO_ERRORS_FOUND
+
+Your response:`;
+  }
+
+  /**
+   * Create Ollama-optimized prompt 
+   */
+  createOllamaPrompt(bio, referenceContent, personName) {
     return `You are a professional fact-checker. Compare the biographical information against the reference source and identify any factual errors, contradictions, or false claims.
 
 BIOGRAPHICAL TEXT TO CHECK:
 "${bio}"
 
 REFERENCE SOURCE CONTENT:
-${referenceContent.substring(0, 8000)} // Limit content length
+${referenceContent.substring(0, 8000)}
 
 PERSON NAME: ${personName}
 
@@ -165,6 +267,46 @@ Your response:`;
   }
 
   /**
+   * Fact-check with supplied reference content (for testing)
+   */
+  async factCheckWithReference(bio, referenceContent, personName, datasetName = 'test') {
+    console.log(`\n🔍 Checking: ${personName}`);
+    
+    try {
+      // Query LLM for fact-checking
+      const currentModel = USE_HUGGINGFACE ? HUGGINGFACE_MODEL : OLLAMA_MODEL;
+      console.log(`  🤖 Analyzing with ${currentModel} (${API_PROVIDER})...`);
+      const prompt = this.createFactCheckPrompt(bio, referenceContent, personName);
+      const llmResponse = await this.queryLLM(prompt);
+      
+      // Parse response
+      const error = this.parseFactCheckResponse(llmResponse);
+      
+      if (error) {
+        console.log(`  ❌ Error found: ${error.description}`);
+        this.errors.push({
+          dataset: datasetName,
+          person_id: 'test',
+          person_name: personName,
+          error_type: 'factual_error',
+          description: error.description,
+          confidence: error.confidence,
+          reference_url: 'supplied_content',
+          bio_excerpt: error.bioExcerpt,
+        });
+        return error;
+      } else {
+        console.log(`  ✅ No factual errors detected`);
+        return null;
+      }
+      
+    } catch (error) {
+      console.log(`  ❌ Failed to fact-check: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Fact-check a single person
    */
   async factCheckPerson(person, datasetName) {
@@ -194,9 +336,10 @@ Your response:`;
       const referenceContent = await this.fetchWebContent(referenceUrl);
 
       // Query LLM for fact-checking
-      console.log(`  🤖 Analyzing with ${MODEL_NAME}...`);
+      const currentModel = USE_HUGGINGFACE ? HUGGINGFACE_MODEL : OLLAMA_MODEL;
+      console.log(`  🤖 Analyzing with ${currentModel} (${API_PROVIDER})...`);
       const prompt = this.createFactCheckPrompt(bio, referenceContent, personName);
-      const llmResponse = await this.queryOllama(prompt);
+      const llmResponse = await this.queryLLM(prompt);
       
       // Parse response
       const error = this.parseFactCheckResponse(llmResponse);
@@ -336,7 +479,8 @@ Your response:`;
    */
   async run() {
     console.log('🚀 Starting biographical fact-checking process...');
-    console.log(`Using model: ${MODEL_NAME}`);
+    const currentModel = USE_HUGGINGFACE ? HUGGINGFACE_MODEL : OLLAMA_MODEL;
+    console.log(`Using model: ${currentModel} (${API_PROVIDER})`);
 
     // Parse command line arguments
     const datasets = this.parseArguments();
@@ -379,9 +523,14 @@ Your response:`;
   }
 }
 
-// Run the fact-checker
-const factChecker = new FactChecker();
-factChecker.run().catch(error => {
-  console.error('💥 Fatal error:', error);
-  process.exit(1);
-});
+// Export the class for testing
+export { FactChecker };
+
+// Run the fact-checker if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const factChecker = new FactChecker();
+  factChecker.run().catch(error => {
+    console.error('💥 Fatal error:', error);
+    process.exit(1);
+  });
+}

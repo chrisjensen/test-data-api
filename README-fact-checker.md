@@ -1,16 +1,35 @@
 # Biographical Fact-Checking Script
 
 ## Overview
-This script automatically fact-checks biographical data in the test datasets against their reference sources using local AI models via Ollama.
+This script automatically fact-checks biographical data in test datasets against their reference sources using either HuggingFace API (recommended) or local AI models via Ollama.
 
 ## Features
-- ✅ Fetches full web content from reference URLs
-- 🤖 Uses `bespoke-minicheck:7b` model (specialized for fact-checking)
+- ✅ **HuggingFace Integration**: Fast cloud-based fact-checking with `meta-llama/Llama-3.1-8B-Instruct`
+- 🔧 **Ollama Support**: Local processing with `bespoke-minicheck:7b` for offline usage
 - 📊 Processes both datasets sequentially with natural rate limiting
 - 📝 Generates CSV report with errors only (legitimate entries omitted)
 - 🛡️ Handles unreachable URLs and unreadable content
+- 🧪 **Comprehensive Test Suite**: 3 test cases to validate fact-checking accuracy
 
 ## Prerequisites
+
+### Option 1: HuggingFace API (Recommended - Fast)
+
+1. **Get a HuggingFace API Key**:
+   - Visit https://huggingface.co/settings/tokens
+   - Create a new token with "Read" permission
+
+2. **Set up environment**:
+   ```bash
+   echo "HUGGING_FACE_API_KEY=your_key_here" > .env
+   ```
+
+3. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+### Option 2: Local Ollama (Slower but offline)
 
 1. **Install Ollama**:
    ```bash
@@ -31,27 +50,51 @@ This script automatically fact-checks biographical data in the test datasets aga
 
 ## Usage
 
+### Basic Commands
+
 ```bash
 cd test-data-api
-node scripts/fact-check-bios.js <dataset-path> [dataset-name] [additional-dataset-path] [dataset-name] ...
+
+# Use HuggingFace (default if API key is present)
+node scripts/fact-check-bios.js <dataset-path> [dataset-name]
+
+# Force HuggingFace usage
+node scripts/fact-check-bios.js --huggingface <dataset-path> [dataset-name]
+
+# Force local Ollama usage
+node scripts/fact-check-bios.js --local <dataset-path> [dataset-name]
 ```
 
 ### Examples
 
-Check a single dataset:
+Check a single dataset with HuggingFace:
 ```bash
-node scripts/fact-check-bios.js ../first-nations-activists-data/src/index.ts first-nations-activists
+node scripts/fact-check-bios.js ../stem-achievements-data/dist/index.js stem-achievements
 ```
 
 Check multiple datasets:
 ```bash
-node scripts/fact-check-bios.js ../first-nations-activists-data/src/index.ts first-nations-activists ../stem-achievements-data/src/index.ts stem-achievements
+node scripts/fact-check-bios.js ../first-nations-activists-data/dist/index.js first-nations-activists ../stem-achievements-data/dist/index.js stem-achievements
 ```
 
-If dataset name is omitted, it will be inferred from the path:
+Force local Ollama usage:
 ```bash
-node scripts/fact-check-bios.js ../stem-achievements-data/src/index.ts
+node scripts/fact-check-bios.js --local ../stem-achievements-data/dist/index.js
 ```
+
+## Testing the Fact Checker
+
+Run the comprehensive test suite to validate fact-checking accuracy:
+
+```bash
+# Run all 3 test cases
+node scripts/fact-checker.test.js
+```
+
+The test suite includes:
+1. **Absurdly False Claims**: Moon landing, eating children, impossible achievements
+2. **Wrong Dates**: Incorrect birth/death dates and chronology
+3. **Impossible Achievements**: Anachronistic awards and achievements
 
 ## Output
 
@@ -74,9 +117,25 @@ The script generates `scripts/fact-check-errors.csv` with these columns:
 - **`url_unreachable`**: HTTP errors, timeouts, or missing URLs
 - **`content_unreadable`**: Page exists but content can't be extracted
 
-## Alternative Models
+## Configuration
 
-If you want to try different models:
+### API Provider Selection
+- **Automatic**: Uses HuggingFace if `HUGGING_FACE_API_KEY` is set, otherwise Ollama
+- **Manual**: Use `--huggingface` or `--local` flags to override
+
+### Model Configuration
+Edit `scripts/fact-check-bios.js` to change models:
+
+```javascript
+// HuggingFace model (fast, requires API key)
+const HUGGINGFACE_MODEL = 'meta-llama/Llama-3.1-8B-Instruct';
+
+// Local Ollama model (slower, offline)
+const OLLAMA_MODEL = 'bespoke-minicheck:7b';
+```
+
+### Alternative Local Models
+If using Ollama, you can try different models:
 
 ```bash
 # For advanced reasoning
@@ -89,10 +148,10 @@ ollama pull qwen2-math:7b
 ollama pull reflection:70b
 ```
 
-Then edit the `MODEL_NAME` constant in `fact-check-bios.js`.
-
 ## Processing Details
 
+- **HuggingFace**: Fast cloud processing, ~2-3 seconds per person
+- **Ollama**: Local processing, ~30-60 seconds per person (CPU-only)
 - Processes datasets sequentially to respect rate limits
 - 1-second delay between person checks
 - 30-second timeout for web requests
@@ -101,6 +160,15 @@ Then edit the `MODEL_NAME` constant in `fact-check-bios.js`.
 
 ## Troubleshooting
 
+### HuggingFace Issues
+**"HUGGINGFACE_API_KEY not found"**: 
+- Add your API key to `.env` file
+- Get a key from https://huggingface.co/settings/tokens
+
+**"No Inference Provider available"**:
+- Some models may not be available - the script uses `meta-llama/Llama-3.1-8B-Instruct` which is tested and working
+
+### Ollama Issues
 **"Cannot connect to Ollama"**: 
 - Ensure Ollama is running: `ollama serve`
 - Check model is available: `ollama list`
@@ -108,6 +176,19 @@ Then edit the `MODEL_NAME` constant in `fact-check-bios.js`.
 **"Model not found"**:
 - Pull the model: `ollama pull bespoke-minicheck:7b`
 
+### General Issues
 **Too many errors**:
-- Try a different model with higher accuracy
+- Try running the test suite first: `node scripts/fact-checker.test.js`
 - Check if reference URLs are valid
+- Consider using HuggingFace for better accuracy
+
+**Script crashes**:
+- Check the error message for missing dependencies
+- Run `npm install` to ensure all packages are installed
+
+## Performance Comparison
+
+| Provider | Speed per person | Cost | Offline | Setup Complexity |
+|----------|------------------|------|---------|------------------|
+| HuggingFace | ~2-3 seconds | Free tier | ❌ | Low |
+| Local Ollama | ~30-60 seconds | Free | ✅ | Medium |

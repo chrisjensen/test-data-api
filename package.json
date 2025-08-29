@@ -40,5 +40,9 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.7.1",
+    "dotenv": "^17.2.1"
   }
 }
