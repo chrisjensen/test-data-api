@@ -98,6 +98,25 @@ export function validateDataPackage(dataPackage, options = {}) {
                 expect(person.email, `${personId}: should use .test domain for mock data safety`).toMatch(/\.test$/);
             });
         });
+        it('should have valid phone numbers when present', () => {
+            people.forEach((person, index) => {
+                const personId = person.fullName || person.preferredName || `Person ${index}`;
+                if (person.phone) {
+                    expect(person.phone, `${personId}: phone must be string`).toEqual(expect.any(String));
+                    // Test data should use 555 to make phone numbers clearly fake
+                    expect(person.phone, `${personId}: should use 555 for mock data safety`).toMatch(/555/);
+                }
+            });
+        });
+        it('should have fake street addresses when present', () => {
+            people.forEach((person, index) => {
+                const personId = person.fullName || person.preferredName || `Person ${index}`;
+                if (person.address?.street) {
+                    // Test data should use " Test" to make street addresses clearly fake
+                    expect(person.address.street, `${personId}: should use " Test" for mock data safety`).toMatch(/ Test/);
+                }
+            });
+        });
         it('should have valid reference URLs when present', () => {
             people.forEach((person, index) => {
                 const personId = person.fullName || person.preferredName || `Person ${index}`;
@@ -116,6 +135,14 @@ export function validateDataPackage(dataPackage, options = {}) {
                     expect(tag, `${personId}: tag ${tagIndex} must be string`).toEqual(expect.any(String));
                     expect(tag, `${personId}: tag "${tag}" must be lowercase with hyphens only`).toMatch(/^[a-z0-9-]+$/);
                 });
+            });
+        });
+        it('should have valid picture URLs', () => {
+            people.forEach((person, index) => {
+                const personId = person.fullName || person.preferredName || `Person ${index}`;
+                expect(person.picture, `${personId}: missing picture URL`).toBeDefined();
+                expect(person.picture, `${personId}: picture must be string`).toEqual(expect.any(String));
+                expect(person.picture, `${personId}: picture must be valid HTTPS URL`).toMatch(/^https:\/\/.+/);
             });
         });
         it('should have valid group memberships', () => {
@@ -221,6 +248,35 @@ export function validateDataPackage(dataPackage, options = {}) {
             });
         }
     });
+    // HTTP validation tests - only run when explicitly enabled
+    if (defaultOptions.validateImageUrls) {
+        describe(`${defaultOptions.datasetName} - HTTP Image Validation`, () => {
+            it('should have accessible picture URLs', async () => {
+                const people = dataPackage.people;
+                const results = await Promise.allSettled(people.map(async (person) => {
+                    const personId = person.fullName || person.preferredName || person.id;
+                    try {
+                        const response = await fetch(person.picture, {
+                            method: 'HEAD'
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return { personId, success: true };
+                    }
+                    catch (error) {
+                        throw new Error(`${personId}: ${error.message}`);
+                    }
+                }));
+                const failures = results
+                    .filter(result => result.status === 'rejected')
+                    .map(result => result.reason.message);
+                if (failures.length > 0) {
+                    throw new Error(`Image URL validation failed:\n${failures.join('\n')}`);
+                }
+            }, 30000); // 30 second timeout for HTTP tests
+        });
+    }
     // Run custom validations as separate tests
     if (defaultOptions.customValidations.length > 0) {
         describe(`${defaultOptions.datasetName} - Custom Validations`, () => {
@@ -234,4 +290,37 @@ export function validateDataPackage(dataPackage, options = {}) {
             });
         });
     }
+}
+// Separate HTTP image validation function that can be used independently
+export function validateImageUrls(dataPackage, options = {}) {
+    const defaultOptions = {
+        datasetName: options.datasetName || 'Dataset',
+        httpTimeout: options.httpTimeout || 15000
+    };
+    describe(`${defaultOptions.datasetName} - HTTP Image Validation`, () => {
+        it('should have accessible picture URLs', async () => {
+            const people = dataPackage.people;
+            const results = await Promise.allSettled(people.map(async (person) => {
+                const personId = person.fullName || person.preferredName || person.id;
+                try {
+                    const response = await fetch(person.picture, {
+                        method: 'HEAD'
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return { personId, success: true };
+                }
+                catch (error) {
+                    throw new Error(`${personId}: ${error.message}`);
+                }
+            }));
+            const failures = results
+                .filter(result => result.status === 'rejected')
+                .map(result => result.reason.message);
+            if (failures.length > 0) {
+                throw new Error(`Image URL validation failed:\n${failures.join('\n')}`);
+            }
+        }, 30000); // 30 second timeout for HTTP tests
+    });
 }

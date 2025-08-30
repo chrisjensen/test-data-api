@@ -305,16 +305,15 @@ export function validateDataPackage(dataPackage: DataPackage, options: TestOptio
           people.map(async (person) => {
             const personId = person.fullName || person.preferredName || person.id;
             try {
-              const response = await fetch(person.picture, { 
-                method: 'HEAD',
-                timeout: defaultOptions.httpTimeout 
+              const response = await fetch(person.picture!, { 
+                method: 'HEAD'
               });
               if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
               }
               return { personId, success: true };
             } catch (error) {
-              throw new Error(`${personId}: ${error.message}`);
+              throw new Error(`${personId}: ${(error as Error).message}`);
             }
           })
         );
@@ -359,16 +358,15 @@ export function validateImageUrls(dataPackage: DataPackage, options: { datasetNa
         people.map(async (person) => {
           const personId = person.fullName || person.preferredName || person.id;
           try {
-            const response = await fetch(person.picture, { 
-              method: 'HEAD',
-              timeout: defaultOptions.httpTimeout 
+            const response = await fetch(person.picture!, { 
+              method: 'HEAD'
             });
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             return { personId, success: true };
           } catch (error) {
-            throw new Error(`${personId}: ${error.message}`);
+            throw new Error(`${personId}: ${(error as Error).message}`);
           }
         })
       );

@@ -29,7 +29,7 @@ export class DataFactory {
         this.loadData(dataPackage, options);
     }
     loadData(dataPackage, options) {
-        this.dataPackageMetadata = dataPackage.metadata;
+        this.dataPackageMetadata = dataPackage.metadata || undefined;
         this.firstNationsAcknowledged = options?.acknowledgeDeceasedFirstNations ?? false;
         // Check if this package contains First Nations people and validate acknowledgment
         const containsFirstNations = this.dataPackageMetadata?.containsFirstNationsPeople ||
