@@ -55,7 +55,7 @@ class FactChecker {
       }
 
       const html = await response.text();
-      
+
       // Extract text content (basic HTML stripping)
       const textContent = html
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -97,7 +97,7 @@ class FactChecker {
       }
 
       const client = new InferenceClient(HUGGINGFACE_API_KEY);
-      
+
       const result = await client.chatCompletion({
         model: HUGGINGFACE_MODEL,
         messages: [
@@ -174,11 +174,17 @@ ${referenceContent.substring(0, 6000)}
 
 PERSON: ${personName}
 
-CRITERIA FOR FLAGGING ERRORS:
-- Only flag CLEAR factual errors, contradictions, or false information
-- Focus on: birth/death dates, achievements, awards, affiliations, historical events, family relations
-- Do not flag information that is simply not mentioned in the reference
-- Be specific about what is wrong
+CRITICAL INSTRUCTION: Look for OBVIOUS FABRICATIONS first, then factual contradictions.
+
+CRITERIA FOR FLAGGING ERRORS (check in priority order):
+1. OBVIOUS FABRICATIONS: Completely impossible, absurd, or clearly false claims in the bio
+2. FACTUAL CONTRADICTIONS: Bio directly conflicts with reference information
+3. SIGNIFICANT DISCREPANCIES: Important details that contradict the reference
+
+IMPORTANT: Do NOT flag information that is simply missing from the reference.
+Focus on what the bio claims that is wrong, not what it doesn't mention.
+
+Be specific about what is wrong
 
 OUTPUT FORMAT:
 If you find factual errors, respond EXACTLY like this:
@@ -236,7 +242,7 @@ Your response:`;
    */
   parseFactCheckResponse(response) {
     const trimmedResponse = response.trim();
-    
+
     if (trimmedResponse === 'NO_ERRORS_FOUND') {
       return null; // No errors found
     }
@@ -253,9 +259,9 @@ Your response:`;
     }
 
     // Fallback parsing for unexpected format
-    if (trimmedResponse.toLowerCase().includes('error') || 
-        trimmedResponse.toLowerCase().includes('incorrect') ||
-        trimmedResponse.toLowerCase().includes('contradiction')) {
+    if (trimmedResponse.toLowerCase().includes('error') ||
+      trimmedResponse.toLowerCase().includes('incorrect') ||
+      trimmedResponse.toLowerCase().includes('contradiction')) {
       return {
         confidence: 'low',
         description: 'Potential factual issue detected (parsing unclear)',
@@ -271,17 +277,17 @@ Your response:`;
    */
   async factCheckWithReference(bio, referenceContent, personName, datasetName = 'test') {
     console.log(`\n🔍 Checking: ${personName}`);
-    
+
     try {
       // Query LLM for fact-checking
       const currentModel = USE_HUGGINGFACE ? HUGGINGFACE_MODEL : OLLAMA_MODEL;
       console.log(`  🤖 Analyzing with ${currentModel} (${API_PROVIDER})...`);
       const prompt = this.createFactCheckPrompt(bio, referenceContent, personName);
       const llmResponse = await this.queryLLM(prompt);
-      
+
       // Parse response
       const error = this.parseFactCheckResponse(llmResponse);
-      
+
       if (error) {
         console.log(`  ❌ Error found: ${error.description}`);
         this.errors.push({
@@ -299,7 +305,7 @@ Your response:`;
         console.log(`  ✅ No factual errors detected`);
         return null;
       }
-      
+
     } catch (error) {
       console.log(`  ❌ Failed to fact-check: ${error.message}`);
       return null;
@@ -311,7 +317,7 @@ Your response:`;
    */
   async factCheckPerson(person, datasetName) {
     console.log(`\n🔍 Checking: ${person.fullName || person.englishName || person.preferredName}`);
-    
+
     const personName = person.fullName || person.englishName || person.preferredName;
     const referenceUrl = person.reference;
     const bio = person.bio;
@@ -340,10 +346,10 @@ Your response:`;
       console.log(`  🤖 Analyzing with ${currentModel} (${API_PROVIDER})...`);
       const prompt = this.createFactCheckPrompt(bio, referenceContent, personName);
       const llmResponse = await this.queryLLM(prompt);
-      
+
       // Parse response
       const error = this.parseFactCheckResponse(llmResponse);
-      
+
       if (error) {
         console.log(`  ⚠️  Factual issue found: ${error.description}`);
         this.errors.push({
@@ -362,10 +368,10 @@ Your response:`;
 
     } catch (error) {
       // Handle fetch or analysis errors
-      const errorType = error.message.includes('HTTP') || error.message.includes('timeout') 
-        ? 'url_unreachable' 
+      const errorType = error.message.includes('HTTP') || error.message.includes('timeout')
+        ? 'url_unreachable'
         : 'content_unreadable';
-      
+
       this.errors.push({
         dataset: datasetName,
         person_id: person.id,
@@ -384,7 +390,7 @@ Your response:`;
    */
   async processDataset(datasetPath, datasetName) {
     console.log(`\n📊 Processing dataset: ${datasetName}`);
-    
+
     try {
       // Import the dataset
       const { default: dataPackage } = await import(datasetPath);
@@ -398,7 +404,7 @@ Your response:`;
         const person = people[i];
         console.log(`\n[${i + 1}/${people.length}]`);
         await this.factCheckPerson(person, datasetName);
-        
+
         // Small delay between requests
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -418,9 +424,9 @@ Your response:`;
     }
 
     console.log(`\n📝 Writing ${this.errors.length} errors to: ${OUTPUT_FILE}`);
-    
+
     let csvContent = CSV_HEADERS;
-    
+
     for (const error of this.errors) {
       const row = [
         error.dataset,
@@ -432,7 +438,7 @@ Your response:`;
         error.reference_url,
         `"${error.bio_excerpt.replace(/"/g, '""')}"`, // Escape quotes
       ].join(',');
-      
+
       csvContent += row + '\n';
     }
 
@@ -446,7 +452,7 @@ Your response:`;
   parseArguments() {
     const args = process.argv.slice(2);
     const datasets = [];
-    
+
     // If no arguments provided, show usage
     if (args.length === 0) {
       console.log('Usage: node fact-check-bios.js <dataset-path> [dataset-name] [additional-dataset-path] [dataset-name] ...');
@@ -457,12 +463,12 @@ Your response:`;
       console.log('  node fact-check-bios.js ../first-nations-activists-data/src/index.ts first-nations-activists ../stem-achievements-data/src/index.ts stem-achievements');
       process.exit(1);
     }
-    
+
     // Parse pairs of path and name arguments
     for (let i = 0; i < args.length; i += 2) {
       const datasetPath = args[i];
       const datasetName = args[i + 1] || path.basename(path.dirname(datasetPath));
-      
+
       if (datasetPath) {
         datasets.push({
           path: path.resolve(datasetPath),
@@ -470,7 +476,7 @@ Your response:`;
         });
       }
     }
-    
+
     return datasets;
   }
 
@@ -510,13 +516,13 @@ Your response:`;
 
     console.log('\n🏁 Fact-checking complete!');
     console.log(`📊 Total errors found: ${this.errors.length}`);
-    
+
     // Summary by error type
     const errorTypes = {};
     this.errors.forEach(error => {
       errorTypes[error.error_type] = (errorTypes[error.error_type] || 0) + 1;
     });
-    
+
     Object.entries(errorTypes).forEach(([type, count]) => {
       console.log(`   ${type}: ${count}`);
     });
